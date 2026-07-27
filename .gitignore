@@ -1,6 +1,7 @@
 .env
-config.js
-config.local.js
+/config.js
+/config.local.js
+/api/_runtime.js
 node_modules/
 .DS_Store
 Thumbs.db

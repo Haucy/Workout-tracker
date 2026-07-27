@@ -7,8 +7,53 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#080808"/>
 <title>Workout</title>
-<script src="config.js"></script>
-<script src="config.local.js" onerror="console.warn('config.local.js missing - AI feature disabled')"></script>
+<script>
+// ─── RUNTIME CONFIG ───
+// On Vercel: fetched from /api/config (serverless function reading env vars).
+// Locally (file://): falls back to config.js / config.local.js.
+(async () => {
+  async function loadRemoteConfig() {
+    try {
+      const r = await fetch('/api/config', { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } catch (e) {
+      console.warn('[config] /api/config not reachable, falling back to local:', e.message);
+      return null;
+    }
+  }
+
+  function loadLocalConfig() {
+    const out = {};
+    if (typeof SB_URL !== 'undefined') out.SB_URL = SB_URL;
+    if (typeof SB_ANON_KEY !== 'undefined') out.SB_ANON_KEY = SB_ANON_KEY;
+    if (typeof GEMINI_API_KEY !== 'undefined') out.GEMINI_API_KEY = GEMINI_API_KEY;
+    return out;
+  }
+
+  let cfg = await loadRemoteConfig();
+  if (!cfg || !cfg.SB_URL) cfg = loadLocalConfig();
+
+  if (!cfg || !cfg.SB_URL || !cfg.SB_ANON_KEY) {
+    document.body.innerHTML = `
+      <div style="padding:40px 20px;font-family:system-ui;text-align:center;color:#fff;background:#080808;min-height:100vh">
+        <h2 style="font-size:22px;margin-bottom:12px">WorkTrack</h2>
+        <p style="color:#aaa;font-size:14px">Configuration missing.</p>
+        ${location.hostname === 'localhost' || location.protocol === 'file:'
+          ? '<p style="color:#888;font-size:13px;margin-top:14px">Local: copy <code>.env.example</code> to <code>.env</code>, fill keys, run <code>node generate-config.mjs</code>.</p>'
+          : '<p style="color:#888;font-size:13px;margin-top:14px">Vercel: add <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> in Settings → Environment Variables.</p>'}
+      </div>`;
+    throw new Error('Config missing');
+  }
+
+  window.SB_URL = cfg.SB_URL;
+  window.SB_ANON_KEY = cfg.SB_ANON_KEY;
+  window.GEMINI_API_KEY = cfg.GEMINI_API_KEY || null;
+
+  // Boot app once config is ready
+  window.dispatchEvent(new Event('wt-config-ready'));
+})();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/CustomEase.min.js"></script>
 <style>
@@ -31,7 +76,6 @@ html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--b
 #root{display:flex;flex-direction:column;height:100%;position:relative}
 
 /* ─── AUTH SCREENS ─── */
-/*
 .auth-screen{position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 28px;overflow-y:auto}
 .auth-screen.hidden{display:none}
 .auth-inner{width:100%;max-width:360px;text-align:center}
@@ -45,7 +89,6 @@ html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--b
 .google-btn svg{width:20px;height:20px}
 .auth-err{background:var(--red-d);border:1px solid var(--red-b);border-radius:var(--r-sm);padding:14px 16px;font-size:13px;color:var(--red);line-height:1.5;text-align:left;margin-top:16px}
 .auth-footer{text-align:center;margin-top:32px;font-size:12px;color:var(--t3);line-height:1.6}
-*/
 
 /* ─── TOPBAR ─── */
 .topbar{padding:14px 18px 10px;background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:12px;position:relative;z-index:10}
@@ -297,7 +340,6 @@ html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--b
 <body>
 <div id="root">
   <!-- ── AUTH ── -->
-  <!--
   <div class="auth-screen" id="auth-screen">
     <div class="auth-inner">
       <div class="auth-logo">🏋️</div>
@@ -309,7 +351,6 @@ html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--b
       <div class="auth-footer">By signing in, you agree to sync your workout data securely with your account.</div>
     </div>
   </div>
-  -->
 
   <!-- ── APP ── -->
   <div id="app-shell" style="display:none;flex-direction:column;height:100%">
@@ -393,19 +434,10 @@ html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--b
 const spring = CustomEase.create('spring','M0,0 C0.14,0 0.27,0.37 0.37,0.56 0.5,0.8 0.65,1.04 0.76,1.04 0.89,1.04 1,1 1,1');
 const $ = id => document.getElementById(id);
 
-// ─── CONFIG CHECK ───
-if (typeof SB_URL === 'undefined' || typeof SB_ANON_KEY === 'undefined') {
-  document.getElementById('auth-form-wrap').innerHTML = `
-    <div class="err-card">
-      <strong>Configuration missing!</strong><br>
-      Please create <code>config.js</code> with your Supabase URL and Anon Key.
-    </div>`;
-  throw new Error('Config missing');
-}
-
 // ─── SUPABASE ───
-const SUPABASE_URL = SB_URL;
-const SUPABASE_ANON_KEY = SB_ANON_KEY;
+const SUPABASE_URL = window.SB_URL;
+const SUPABASE_ANON_KEY = window.SB_ANON_KEY;
+const GEMINI_API_KEY = window.GEMINI_API_KEY;
 let SB_SESSION = null;
 
 async function sbReq(path, opts={}, useAuth=false){
@@ -427,21 +459,17 @@ async function sbReq(path, opts={}, useAuth=false){
   return body;
 }
 
-// ─── AUTH (commented out for testing) ───
-function renderGoogleAuth(err){}
-function doGoogleSignIn(){}
-async function handleOAuthRedirect(){ return false; }
-function friendlyAuthErr(e){ return e.message||String(e); }
-async function doRefreshToken(){ return false; }
-function saveSession(s){}
-function loadSession(){}
-function clearSession(){}
-async function signOut(){
-  closeUserMenu();
-  alert('Sign out requires login to be re-enabled.');
+// Fetch user info from Supabase using access_token (not stored in OAuth hash)
+async function sbFetchUser(){
+  if(SB_SESSION?.user) return SB_SESSION.user;
+  try{
+    const u = await sbReq('/auth/v1/user', { method:'GET' }, true);
+    if(SB_SESSION) SB_SESSION.user = u;
+    return u;
+  }catch(e){ return null; }
 }
-/*
-// ─── AUTH ───
+
+// ─── AUTH (Google sign-in via Supabase OAuth) ───
 function renderGoogleAuth(err){
   const btnText = err ? 'Try Again' : 'Continue with Google';
   $('auth-form-wrap').innerHTML = `
@@ -468,9 +496,12 @@ async function handleOAuthRedirect(){
   const hash = new URLSearchParams(location.hash.replace('#',''));
   const access_token = hash.get('access_token');
   const refresh_token = hash.get('refresh_token');
+  const provider_token = hash.get('provider_token');
+  const expires_in = parseInt(hash.get('expires_in')||'3600');
   const error = hash.get('error');
+  const error_description = hash.get('error_description');
   if(access_token){
-    SB_SESSION = { access_token, refresh_token };
+    SB_SESSION = { access_token, refresh_token, provider_token, expires_at: Math.floor(Date.now()/1000) + expires_in };
     saveSession(SB_SESSION);
     try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){}
     await bootApp();
@@ -478,7 +509,7 @@ async function handleOAuthRedirect(){
   }
   if(error){
     try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){}
-    showAuth('Google sign-in failed. Please try again.');
+    showAuth('Google sign-in failed: ' + (error_description || error));
     return true;
   }
   return false;
@@ -498,7 +529,8 @@ async function doRefreshToken(){
   if(!SB_SESSION?.refresh_token) return false;
   try{
     const res = await sbReq('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:JSON.stringify({refresh_token:SB_SESSION.refresh_token})});
-    SB_SESSION = res; saveSession(res); return true;
+    SB_SESSION = {...res, expires_at: Math.floor(Date.now()/1000) + (res.expires_in||3600)};
+    saveSession(SB_SESSION); return true;
   }catch(e){ return false; }
 }
 
@@ -510,11 +542,10 @@ async function signOut(){
   closeUserMenu();
   try{ await sbReq('/auth/v1/logout',{method:'POST'},true); }catch(e){}
   clearSession();
-  S = {exercises:[],logs:{},tab:'library',filter:'all',wOff:0,mOff:0,selDay:null,editId:null,openIds:new Set(),nextId:19,showForm:false,tmpSel:[]};
+  S = {exercises:[],logs:{},tab:'library',filter:'all',wOff:0,mOff:0,selDay:null,editId:null,openIds:new Set(),nextId:19,showForm:false,tmpSel:[],aiSplit:null,aiMsg:[],aiPlan:[],aiLoading:false,aiGenerating:false};
   $('app-shell').style.display='none';
   showAuth();
 }
-*/
 
 // ─── SUGGEST FILL ───
 function suggestFill(muscle, exId){
@@ -815,13 +846,25 @@ function skipAi(){
   render();
 }
 
-// ─── BOOT FIX FOR TESTING ───
-function testFixBoot(){
-  const user=SB_SESSION?.user;
-  const name=(user?.user_metadata?.display_name||user?.email||'Test');
-  $('tb-avatar').textContent=(name[0]||'?').toUpperCase();
-  $('um-name').textContent=user?.user_metadata?.display_name||name.split('@')[0];
-  $('um-email').textContent=user?.email||'test@local';
+// ─── INIT ───
+async function init(){
+  loadSession();
+  const handled = await handleOAuthRedirect();
+  if(handled) return;
+  if(SB_SESSION){
+    if(SB_SESSION.expires_at && Date.now()/1000 > SB_SESSION.expires_at - 60){
+      const ok = await doRefreshToken();
+      if(!ok){ clearSession(); showAuth('Session expired. Please sign in again.'); return; }
+    }
+    await bootApp();
+  } else { showAuth(); }
+}
+
+// Wait for runtime config to load before booting
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => window.addEventListener('wt-config-ready', init, { once: true }));
+} else {
+  window.addEventListener('wt-config-ready', init, { once: true });
 }
 
 // ─── USER MENU ───
@@ -838,7 +881,10 @@ function closeUserMenu(){ _menuOpen=false; $('user-menu').classList.remove('open
 function closeUserMenuOnBackdrop(e){ if(e.target.classList.contains('user-menu-backdrop')||e.target.classList.contains('user-menu'))closeUserMenu(); }
 
 function showAuth(err){
-  console.warn('Auth screen disabled for testing');
+  const authEl = $('auth-screen');
+  if(authEl) authEl.classList.remove('hidden');
+  $('app-shell').style.display='none';
+  renderGoogleAuth(err);
 }
 
 function fErr(e){
@@ -902,15 +948,15 @@ function saveAiPref(){
 }
 
 // ─── DB OPS ───
-const TESTING_NO_AUTH = true; // set false when login re-enabled
+const TESTING_NO_AUTH = false;
 async function sbGet(key){
   if(TESTING_NO_AUTH){ return null; }
-  const r=await sbReq(`/rest/v1/user_data?key=eq.${encodeURIComponent(key)}&select=value`,{method:'GET'},true);
+  const r=await sbReq(`/rest/v1/app_data?key=eq.${encodeURIComponent(key)}&select=value`,{method:'GET'},true);
   return r&&r.length?r[0].value:null;
 }
 async function sbSet(key,value){
   if(TESTING_NO_AUTH){ return; }
-  await sbReq('/rest/v1/user_data',{method:'POST',headers:{Prefer:'resolution=merge-duplicates'},body:JSON.stringify({key,value,updated_at:new Date().toISOString(),user_id:SB_SESSION.user.id})},true);
+  await sbReq('/rest/v1/app_data',{method:'POST',headers:{Prefer:'resolution=merge-duplicates'},body:JSON.stringify({key,value,updated_at:new Date().toISOString(),user_id:SB_SESSION.user.id})},true);
 }
 
 let _saving=false, _dirty=false;
@@ -949,19 +995,16 @@ async function bootApp(){
   $('screen-loading').style.display='flex';
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   try{
+    await sbFetchUser();
     await dbLoad();
     $('screen-loading').style.display='none';
     $('screen-'+S.tab).classList.add('active');
     posTrack(S.tab,false);
-    if(TESTING_NO_AUTH){
-      testFixBoot();
-    } else {
-      const user=SB_SESSION?.user;
-      const name=(user?.user_metadata?.display_name||user?.email||'?');
-      $('tb-avatar').textContent=(name[0]||'?').toUpperCase();
-      $('um-name').textContent=user?.user_metadata?.display_name||name.split('@')[0];
-      $('um-email').textContent=user?.email||'';
-    }
+    const user=SB_SESSION?.user;
+    const name=(user?.user_metadata?.display_name||user?.user_metadata?.full_name||user?.email||'?');
+    $('tb-avatar').textContent=(name[0]||'?').toUpperCase();
+    $('um-name').textContent=user?.user_metadata?.display_name||user?.user_metadata?.full_name||name.split('@')[0];
+    $('um-email').textContent=user?.email||'';
     gsap.from($('app-shell'),{opacity:0,duration:.35,ease:'power2.out'});
     render();
   }catch(e){
