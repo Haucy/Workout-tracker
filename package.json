@@ -8,6 +8,6 @@
     "build:config": "node generate-config.mjs"
   },
   "engines": {
-    "node": "18.x"
+    "node": "20.x"
   }
 }
