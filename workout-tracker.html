@@ -493,23 +493,37 @@ async function doGoogleSignIn(){
 }
 
 async function handleOAuthRedirect(){
-  const hash = new URLSearchParams(location.hash.replace('#',''));
-  const access_token = hash.get('access_token');
-  const refresh_token = hash.get('refresh_token');
-  const provider_token = hash.get('provider_token');
-  const expires_in = parseInt(hash.get('expires_in')||'3600');
-  const error = hash.get('error');
-  const error_description = hash.get('error_description');
+  // Supabase OAuth can redirect using either fragment (#) or query (?)
+  // depending on the flow. Read from both for robustness.
+  const frag = new URLSearchParams(location.hash.replace('#',''));
+  const q = new URLSearchParams(location.search);
+  const pick = (k) => frag.get(k) || q.get(k);
+
+  const access_token = pick('access_token');
+  const refresh_token = pick('refresh_token');
+  const provider_token = pick('provider_token');
+  const expires_in = parseInt(pick('expires_in')||'3600');
+  const error = pick('error');
+  const error_description = pick('error_description');
+  const error_code = pick('error_code');
+
+  console.log('[OAuth] redirect URL:', location.href);
+  console.log('[OAuth] params:', { has_token: !!access_token, error, error_code, error_description });
+
   if(access_token){
     SB_SESSION = { access_token, refresh_token, provider_token, expires_at: Math.floor(Date.now()/1000) + expires_in };
     saveSession(SB_SESSION);
-    try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){}
+    try{ history.replaceState(null,'',location.pathname); }catch(e){}
     await bootApp();
     return true;
   }
   if(error){
-    try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){}
-    showAuth('Google sign-in failed: ' + (error_description || error));
+    const msg = `${error_description || error}${error_code ? ' (code '+error_code+')' : ''}`;
+    // Show debug info on screen so user can report it back
+    const debugInfo = `URL: ${location.origin}${location.pathname}\nCode: ${error_code||'-'}\nError: ${error_description || error}`;
+    console.error('[OAuth] failed:', debugInfo);
+    try{ history.replaceState(null,'',location.pathname); }catch(e){}
+    showAuth('Google sign-in failed: ' + msg + (location.hostname.includes('localhost')||location.protocol==='file:'?'':'  —  Check that this URL is added to Supabase Redirect URLs: '+location.origin));
     return true;
   }
   return false;
