@@ -506,27 +506,33 @@ async function doMagicLink(e){
   if(!email){ return; }
   const btn = $('magic-btn');
   if(btn){ btn.disabled = true; btn.textContent = 'Sending...'; }
+  const msg = $('magic-msg');
   try{
-    await sbReq('/auth/v1/otp', {
+    const payload = { email, options: { emailRedirectTo: location.origin + location.pathname } };
+    console.log('[MagicLink] request to:', SUPABASE_URL+'/auth/v1/otp', payload);
+    const res = await sbReq('/auth/v1/otp', {
       method: 'POST',
-      body: JSON.stringify({ email, gotrue_meta_security_url: location.origin + location.pathname })
+      body: JSON.stringify(payload)
     }, false); // false = use anon key, no session
-    const msg = $('magic-msg');
-    if(msg) msg.textContent = 'Check your inbox — we sent a sign-in link.';
+    console.log('[MagicLink] response:', res);
+    if(msg){ msg.textContent = 'Check your inbox — we sent a sign-in link.'; msg.className = 'auth-info'; }
   }catch(err){
-    const msg = $('magic-msg');
-    if(msg) msg.textContent = friendlyAuthErr(err);
-    const btn2 = $('magic-btn');
-    if(btn2){ btn2.disabled = false; btn2.textContent = 'Send magic link'; }
-    console.error('Magic link error:', err);
+    console.error('[MagicLink] full error:', err);
+    const detail = String(err?.message||err||'');
+    if(msg){ msg.textContent = friendlyAuthErr(err); msg.className = 'auth-err'; }
+    console.error('[MagicLink] error message:', detail);
   }
+  const btn2 = $('magic-btn');
+  if(btn2){ btn2.disabled = false; btn2.textContent = 'Send magic link'; }
 }
 
 function friendlyAuthErr(e){
   const m=String(e.message||e);
+  if(m.includes('Network')){
+    return 'Cannot reach Supabase. Original error: ' + m.replace(/^Network:\s*/, '');
+  }
   if(m.includes('rate limit'))return'Too many attempts. Please wait a moment.';
   if(m.includes('Email rate'))return'Too many attempts. Please wait a moment.';
-  if(m.includes('Network'))return'Cannot connect. Check your internet connection.';
   return m.replace(/^HTTP \d+:\s*/, '');
 }
 
