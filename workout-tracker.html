@@ -87,6 +87,17 @@ html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--b
 .google-btn:active{transform:scale(.98)}
 .google-btn:disabled{opacity:.6;cursor:not-allowed}
 .google-btn svg{width:20px;height:20px}
+.auth-card{max-width:420px;margin:0 auto;padding:8px 4px;text-align:center}
+.auth-title{font-size:28px;font-weight:900;letter-spacing:-.6px;margin:0 0 8px;background:linear-gradient(135deg,#fff,#aaa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.auth-sub{font-size:14px;color:var(--t2);line-height:1.5;margin:0 0 24px}
+.auth-input{width:100%;padding:14px 16px;border:1px solid var(--b1);border-radius:12px;background:var(--bg-2);color:var(--t1);font-size:15px;font-family:var(--font);margin-bottom:12px;transition:border-color .2s,box-shadow .2s;box-sizing:border-box}
+.auth-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(34,211,160,.15)}
+.auth-input::placeholder{color:var(--t3)}
+.auth-btn{width:100%;padding:14px 24px;border:none;border-radius:12px;background:linear-gradient(135deg,#22d3a0,#60a5fa);color:#0a0e1a;font-size:15px;font-weight:800;font-family:var(--font);cursor:pointer;transition:all .2s var(--ease);box-shadow:0 4px 16px rgba(34,211,160,.25)}
+.auth-btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 22px rgba(34,211,160,.35)}
+.auth-btn:active:not(:disabled){transform:scale(.98)}
+.auth-btn:disabled{opacity:.6;cursor:not-allowed}
+.auth-info{font-size:13px;color:var(--accent);margin-top:16px;line-height:1.5}
 .auth-err{background:var(--red-d);border:1px solid var(--red-b);border-radius:var(--r-sm);padding:14px 16px;font-size:13px;color:var(--red);line-height:1.5;text-align:left;margin-top:16px}
 .auth-footer{text-align:center;margin-top:32px;font-size:12px;color:var(--t3);line-height:1.6}
 
@@ -469,77 +480,59 @@ async function sbFetchUser(){
   }catch(e){ return null; }
 }
 
-// ─── AUTH (Google sign-in via Supabase OAuth) ───
-function renderGoogleAuth(err){
-  const btnText = err ? 'Try Again' : 'Continue with Google';
-  $('auth-form-wrap').innerHTML = `
-    <button class="google-btn" id="google-btn" onclick="doGoogleSignIn()">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-      </svg>
-      ${btnText}
-    </button>
-    ${err?`<div class="auth-err">${err}</div>`:''}`;
+// ─── AUTH (Magic link via Supabase OTP) ───
+function showAuth(err){
+  const authEl = $('auth-screen');
+  if(authEl) authEl.classList.remove('hidden');
+  $('app-shell').style.display='none';
+  const formEl = $('auth-form-wrap');
+  if(!formEl) return;
+  formEl.innerHTML = `
+    <div class="auth-card">
+      <h2 class="auth-title">Workout Tracker</h2>
+      <p class="auth-sub">Sign in with your email — we'll send you a magic link.</p>
+      <form id="magic-form" onsubmit="doMagicLink(event)">
+        <input type="email" id="magic-email" class="auth-input" placeholder="you@example.com" required autocomplete="email" />
+        <button type="submit" class="auth-btn" id="magic-btn">Send magic link</button>
+      </form>
+      ${err?`<div class="auth-err">${err}</div>`:''}
+      <div id="magic-msg" class="auth-info"></div>
+    </div>`;
 }
 
-async function doGoogleSignIn(){
-  const btn=$('google-btn'); if(btn){btn.disabled=true;btn.innerHTML='<div class="spinner" style="width:18px;height:18px;border-width:2px"></div> Redirecting...';}
-  localStorage.setItem('wt5_oauth','1');
-  const redirectTo = encodeURIComponent(location.origin + location.pathname);
-  location.assign(SUPABASE_URL+'/auth/v1/authorize?provider=google&redirect_to='+redirectTo);
-}
-
-async function handleOAuthRedirect(){
-  // Supabase OAuth can redirect using either fragment (#) or query (?)
-  // depending on the flow. Read from both for robustness.
-  const frag = new URLSearchParams(location.hash.replace('#',''));
-  const q = new URLSearchParams(location.search);
-  const pick = (k) => frag.get(k) || q.get(k);
-
-  const access_token = pick('access_token');
-  const refresh_token = pick('refresh_token');
-  const provider_token = pick('provider_token');
-  const expires_in = parseInt(pick('expires_in')||'3600');
-  const error = pick('error');
-  const error_description = pick('error_description');
-  const error_code = pick('error_code');
-
-  console.log('[OAuth] redirect URL:', location.href);
-  console.log('[OAuth] params:', { has_token: !!access_token, error, error_code, error_description });
-
-  if(access_token){
-    SB_SESSION = { access_token, refresh_token, provider_token, expires_at: Math.floor(Date.now()/1000) + expires_in };
-    saveSession(SB_SESSION);
-    try{ history.replaceState(null,'',location.pathname); }catch(e){}
-    await bootApp();
-    return true;
+async function doMagicLink(e){
+  e.preventDefault();
+  const email = ($('magic-email').value||'').trim();
+  if(!email){ return; }
+  const btn = $('magic-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Sending...'; }
+  try{
+    await sbReq('/auth/v1/otp', {
+      method: 'POST',
+      body: JSON.stringify({ email, gotrue_meta_security_url: location.origin + location.pathname })
+    }, false); // false = use anon key, no session
+    const msg = $('magic-msg');
+    if(msg) msg.textContent = 'Check your inbox — we sent a sign-in link.';
+  }catch(err){
+    const msg = $('magic-msg');
+    if(msg) msg.textContent = friendlyAuthErr(err);
+    const btn2 = $('magic-btn');
+    if(btn2){ btn2.disabled = false; btn2.textContent = 'Send magic link'; }
+    console.error('Magic link error:', err);
   }
-  if(error){
-    const msg = `${error_description || error}${error_code ? ' (code '+error_code+')' : ''}`;
-    // Show debug info on screen so user can report it back
-    const debugInfo = `URL: ${location.origin}${location.pathname}\nCode: ${error_code||'-'}\nError: ${error_description || error}`;
-    console.error('[OAuth] failed:', debugInfo);
-    try{ history.replaceState(null,'',location.pathname); }catch(e){}
-    showAuth('Google sign-in failed: ' + msg + (location.hostname.includes('localhost')||location.protocol==='file:'?'':'  —  Check that this URL is added to Supabase Redirect URLs: '+location.origin));
-    return true;
-  }
-  return false;
 }
 
 function friendlyAuthErr(e){
   const m=String(e.message||e);
-  if(m.includes('Invalid login'))return'Incorrect email or password.';
-  if(m.includes('Email not confirmed'))return'Please confirm your email first.';
-  if(m.includes('already registered')||m.includes('User already'))return'This email is already registered. Try signing in.';
-  if(m.includes('Network'))return'Cannot connect. Check your internet connection.';
   if(m.includes('rate limit'))return'Too many attempts. Please wait a moment.';
-  return 'Error: '+m;
+  if(m.includes('Email rate'))return'Too many attempts. Please wait a moment.';
+  if(m.includes('Network'))return'Cannot connect. Check your internet connection.';
+  return m.replace(/^HTTP \d+:\s*/, '');
 }
 
+
 async function doRefreshToken(){
+  if(!SB_SESSION?.refresh_token) return false;
   if(!SB_SESSION?.refresh_token) return false;
   try{
     const res = await sbReq('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:JSON.stringify({refresh_token:SB_SESSION.refresh_token})});
@@ -860,19 +853,7 @@ function skipAi(){
   render();
 }
 
-// ─── INIT ───
-async function init(){
-  loadSession();
-  const handled = await handleOAuthRedirect();
-  if(handled) return;
-  if(SB_SESSION){
-    if(SB_SESSION.expires_at && Date.now()/1000 > SB_SESSION.expires_at - 60){
-      const ok = await doRefreshToken();
-      if(!ok){ clearSession(); showAuth('Session expired. Please sign in again.'); return; }
-    }
-    await bootApp();
-  } else { showAuth(); }
-}
+// ─── INIT (defined below; auth + magic link flow) ───
 
 // Wait for runtime config to load before booting
 if (document.readyState === 'loading') {
@@ -893,13 +874,6 @@ function toggleUserMenu(){
 }
 function closeUserMenu(){ _menuOpen=false; $('user-menu').classList.remove('open'); }
 function closeUserMenuOnBackdrop(e){ if(e.target.classList.contains('user-menu-backdrop')||e.target.classList.contains('user-menu'))closeUserMenu(); }
-
-function showAuth(err){
-  const authEl = $('auth-screen');
-  if(authEl) authEl.classList.remove('hidden');
-  $('app-shell').style.display='none';
-  renderGoogleAuth(err);
-}
 
 function fErr(e){
   const m=String(e.message||e);
@@ -1030,17 +1004,13 @@ async function bootApp(){
 // ─── INIT ───
 async function init(){
   loadSession();
-  // Auth bypassed for testing — uncomment to re-enable login
-  // const handled = await handleOAuthRedirect();
-  // if(handled) return;
-  // if(SB_SESSION){
-  //   if(SB_SESSION.expires_at && Date.now()/1000 > SB_SESSION.expires_at - 60){
-  //     const ok = await doRefreshToken();
-  //     if(!ok){ clearSession(); showAuth(); return; }
-  //   }
-  //   await bootApp();
-  // } else { showAuth(); }
-  await bootApp();
+  if(SB_SESSION){
+    if(SB_SESSION.expires_at && Date.now()/1000 > SB_SESSION.expires_at - 60){
+      const ok = await doRefreshToken();
+      if(!ok){ clearSession(); showAuth('Session expired. Please sign in again.'); return; }
+    }
+    await bootApp();
+  } else { showAuth(); }
 }
 
 // ─── ICONS ───
