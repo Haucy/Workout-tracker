@@ -9,48 +9,17 @@
 <title>Workout</title>
 <script>
 // ─── RUNTIME CONFIG ───
-// On Vercel: fetched from /api/config (serverless function reading env vars).
-// Locally (file://): falls back to config.js / config.local.js.
-(async () => {
-  async function loadRemoteConfig() {
-    try {
-      const r = await fetch('/api/config', { cache: 'no-store' });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return await r.json();
-    } catch (e) {
-      console.warn('[config] /api/config not reachable, falling back to local:', e.message);
-      return null;
-    }
-  }
+// Supabase anon key is intentionally public (anon keys are designed for client use;
+// security relies on Supabase RLS policies).
+// Gemini API key is NEVER exposed to the client — calls go through /api/gemini proxy.
+(function () {
+  const SB_URL = "https://cjmligfnleonlgvamyws.supabase.co";
+  const SB_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqbWxpZ2ZubGVvbmx3cyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzgyNDYzNjIxLCJleHAiOjIwOTgwMzk2MjF9._xTMOU4Gql6hHSMFU73IG61M8ueLFojKxbmLoE5sxiU";
 
-  function loadLocalConfig() {
-    const out = {};
-    if (typeof SB_URL !== 'undefined') out.SB_URL = SB_URL;
-    if (typeof SB_ANON_KEY !== 'undefined') out.SB_ANON_KEY = SB_ANON_KEY;
-    if (typeof GEMINI_API_KEY !== 'undefined') out.GEMINI_API_KEY = GEMINI_API_KEY;
-    return out;
-  }
+  window.SB_URL = SB_URL;
+  window.SB_ANON_KEY = SB_ANON_KEY;
+  window.GEMINI_PROXY = "/api/gemini";
 
-  let cfg = await loadRemoteConfig();
-  if (!cfg || !cfg.SB_URL) cfg = loadLocalConfig();
-
-  if (!cfg || !cfg.SB_URL || !cfg.SB_ANON_KEY) {
-    document.body.innerHTML = `
-      <div style="padding:40px 20px;font-family:system-ui;text-align:center;color:#fff;background:#080808;min-height:100vh">
-        <h2 style="font-size:22px;margin-bottom:12px">WorkTrack</h2>
-        <p style="color:#aaa;font-size:14px">Configuration missing.</p>
-        ${location.hostname === 'localhost' || location.protocol === 'file:'
-          ? '<p style="color:#888;font-size:13px;margin-top:14px">Local: copy <code>.env.example</code> to <code>.env</code>, fill keys, run <code>node generate-config.mjs</code>.</p>'
-          : '<p style="color:#888;font-size:13px;margin-top:14px">Vercel: add <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> in Settings → Environment Variables.</p>'}
-      </div>`;
-    throw new Error('Config missing');
-  }
-
-  window.SB_URL = cfg.SB_URL;
-  window.SB_ANON_KEY = cfg.SB_ANON_KEY;
-  window.GEMINI_API_KEY = cfg.GEMINI_API_KEY || null;
-
-  // Boot app once config is ready
   window.dispatchEvent(new Event('wt-config-ready'));
 })();
 </script>
@@ -448,7 +417,6 @@ const $ = id => document.getElementById(id);
 // ─── SUPABASE ───
 const SUPABASE_URL = window.SB_URL;
 const SUPABASE_ANON_KEY = window.SB_ANON_KEY;
-const GEMINI_API_KEY = window.GEMINI_API_KEY;
 let SB_SESSION = null;
 
 async function sbReq(path, opts={}, useAuth=false){
@@ -737,34 +705,19 @@ CHỈ trả JSON, không giải thích thêm.`;
 }
 
 async function askGemini(prompt){
-  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-  console.log('[AI] Calling:', url.replace(GEMINI_API_KEY, 'KEY_HIDDEN'));
-  const res = await fetch(url, {
+  const res = await fetch(window.GEMINI_PROXY, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      contents:[{parts:[{text:prompt}]}],
-      generationConfig:{
-        temperature:0.5,
-        maxOutputTokens:4096
-      }
-    })
+    body: JSON.stringify({ prompt })
   });
-  const data = await res.json();
-  console.log('[AI] Status:', res.status, 'Response:', data);
-  if(!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const data = await res.json().catch(() => ({}));
+  if(!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  return data.text || '';
 }
 
 async function generatePlan(){
   if(S.aiGenerating) return;
   S.aiGenerating = true;
-  if(!GEMINI_API_KEY){
-    S.aiPlan = fallbackPlan();
-    S.aiMsg.unshift({role:'ai', text:'⚠️ Chưa có API key - dùng gợi ý dựa trên lịch sử tập', time: Date.now()});
-    render();
-    return;
-  }
   S.aiLoading = true;
   render();
   let raw = '';
