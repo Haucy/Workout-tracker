@@ -705,14 +705,8 @@ CHỈ trả JSON, không giải thích thêm.`;
 }
 
 async function askGemini(prompt){
-  const res = await fetch(window.GEMINI_PROXY, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ prompt })
-  });
-  const data = await res.json().catch(() => ({}));
-  if(!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-  return data.text || '';
+  // Gemini API temporarily disabled — using fallback suggestions.
+  throw new Error('AI disabled');
 }
 
 async function generatePlan(){
@@ -720,26 +714,12 @@ async function generatePlan(){
   S.aiGenerating = true;
   S.aiLoading = true;
   render();
-  let raw = '';
+  // Gemini API disabled — use fallback directly.
   try{
-    const target = pickSplitTarget();
-    const prompt = buildAiPrompt(target);
-    raw = await askGemini(prompt);
-    console.log('[AI] Raw response:', raw);
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if(!jsonMatch) throw new Error('Invalid response - no JSON found');
-    const data = JSON.parse(jsonMatch[0]);
-    if(!data.exercises || !Array.isArray(data.exercises)) throw new Error('No exercises array in response');
-    S.aiPlan = data.exercises.map(item => {
-      const ex = S.exercises.find(e => e.name.toLowerCase() === item.name.toLowerCase());
-      return ex ? {...item, id: ex.id, muscle: ex.muscle, type: ex.type} : null;
-    }).filter(Boolean);
-    if(!S.aiPlan.length) throw new Error('All exercises filtered out (name mismatch)');
-    S.aiMsg.unshift({role:'ai', text: data.greeting || 'Đây là gợi ý cho hôm nay', time: Date.now()});
-  }catch(e){
-    console.error('[AI] Plan build failed:', e.message, '| Raw was:', raw);
     S.aiPlan = fallbackPlan();
-    S.aiMsg.unshift({role:'ai', text:'AI gặp lỗi - dùng gợi ý dựa trên lịch sử (' + e.message + ')', time: Date.now()});
+    S.aiMsg.unshift({role:'ai', text:'Gợi ý dựa trên lịch sử tập (AI tạm thời tắt)', time: Date.now()});
+  }catch(e){
+    S.aiMsg.unshift({role:'ai', text:'Lỗi: ' + e.message, time: Date.now()});
   }
   S.aiLoading = false;
   S.aiGenerating = false;
