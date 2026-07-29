@@ -2,7 +2,7 @@
 // Returns runtime config (Supabase + Gemini keys) read from environment variables.
 // Keys are NEVER in the repo — set them in Vercel dashboard → Settings → Environment Variables.
 
-export default function handler(req, res) {
+module.exports = function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Content-Type", "application/json; charset=utf-8");
 
@@ -21,4 +21,4 @@ export default function handler(req, res) {
     SB_ANON_KEY: sbKey,
     GEMINI_API_KEY: gemKey || null,
   });
-}
+};
