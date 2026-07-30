@@ -434,7 +434,10 @@ async function sbReq(path, opts={}, useAuth=false){
     throw new Error('Network: '+e.message);
   });
   const body = await res.json().catch(()=>null);
-  if(!res.ok) throw new Error('HTTP '+res.status+': '+((body&&(body.message||body.hint||body.error||body.error_description))||res.statusText));
+  if(!res.ok) {
+    console.error('[sbReq] FAILED', {url: SUPABASE_URL+path, status: res.status, body, sentHeaders: headers});
+    throw new Error('HTTP '+res.status+': '+((body&&(body.message||body.hint||body.error||body.error_description))||res.statusText));
+  }
   return body;
 }
 
