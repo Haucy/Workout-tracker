@@ -878,7 +878,7 @@ function saveAiPref(){
 }
 
 // ─── DB OPS ───
-const TESTING_NO_AUTH = false;
+const TESTING_NO_AUTH = true;
 async function sbGet(key){
   if(TESTING_NO_AUTH){ return null; }
   const r=await sbReq(`/rest/v1/app_data?key=eq.${encodeURIComponent(key)}&select=value`,{method:'GET'},true);
@@ -925,7 +925,7 @@ async function bootApp(){
   $('screen-loading').style.display='flex';
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   try{
-    await sbFetchUser();
+    if(!TESTING_NO_AUTH) await sbFetchUser();
     await dbLoad();
     $('screen-loading').style.display='none';
     $('screen-'+S.tab).classList.add('active');
@@ -945,6 +945,11 @@ async function bootApp(){
 
 // ─── INIT ───
 async function init(){
+  if(TESTING_NO_AUTH){
+    SB_SESSION = { user: { id: 'local', email: 'local@dev', user_metadata: { display_name: 'Local Dev' } } };
+    await bootApp();
+    return;
+  }
   loadSession();
   if(SB_SESSION){
     if(SB_SESSION.expires_at && Date.now()/1000 > SB_SESSION.expires_at - 60){
