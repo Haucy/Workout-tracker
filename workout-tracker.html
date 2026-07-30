@@ -971,7 +971,7 @@ function saveAiPref(){
 }
 
 // ─── DB OPS ───
-const TESTING_NO_AUTH = true;
+const TESTING_NO_AUTH = false;
 async function sbGet(key){
   if(TESTING_NO_AUTH){ return null; }
   const r=await sbReq(`/rest/v1/app_data?key=eq.${encodeURIComponent(key)}&select=value`,{method:'GET'},true);
