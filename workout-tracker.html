@@ -971,20 +971,16 @@ function saveAiPref(){
 }
 
 // ─── DB OPS ───
-const TESTING_NO_AUTH = false;
 async function sbGet(key){
-  if(TESTING_NO_AUTH){ return null; }
   const r=await sbReq(`/rest/v1/app_data?key=eq.${encodeURIComponent(key)}&select=value`,{method:'GET'},true);
   return r&&r.length?r[0].value:null;
 }
 async function sbSet(key,value){
-  if(TESTING_NO_AUTH){ return; }
   await sbReq('/rest/v1/app_data',{method:'POST',headers:{Prefer:'resolution=merge-duplicates'},body:JSON.stringify({key,value,updated_at:new Date().toISOString(),user_id:SB_SESSION.user.id})},true);
 }
 
 let _saving=false, _dirty=false;
 async function save(){
-  if(TESTING_NO_AUTH){ saveLocal(); toast('Saved locally ✓','ok'); return; }
   if(_saving){_dirty=true;return;}
   _saving=true;
   try{
@@ -1002,7 +998,6 @@ async function save(){
 
 async function dbLoad(){
   loadLocal();
-  if(TESTING_NO_AUTH) return;
   const[ex,lg,nid]=await Promise.all([sbGet('exercises'),sbGet('logs'),sbGet('nextId')]);
   S.exercises=ex!==null?ex:JSON.parse(JSON.stringify(DEFAULT));
   S.logs=lg!==null?lg:{};
@@ -1018,7 +1013,8 @@ async function bootApp(){
   $('screen-loading').style.display='flex';
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   try{
-    if(!TESTING_NO_AUTH) await sbFetchUser();
+    if(!SB_SESSION?.access_token) { signOut(); return; }
+    await sbFetchUser();
     await dbLoad();
     $('screen-loading').style.display='none';
     $('screen-'+S.tab).classList.add('active');
@@ -1038,11 +1034,6 @@ async function bootApp(){
 
 // ─── INIT ───
 async function init(){
-  if(TESTING_NO_AUTH){
-    SB_SESSION = { user: { id: 'local', email: 'local@dev', user_metadata: { display_name: 'Local Dev' } } };
-    await bootApp();
-    return;
-  }
   loadSession();
   if(SB_SESSION){
     if(SB_SESSION.expires_at && Date.now()/1000 > SB_SESSION.expires_at - 60){
