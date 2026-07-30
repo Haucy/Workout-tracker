@@ -69,6 +69,9 @@ html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--b
 .auth-info{font-size:13px;color:var(--accent);margin-top:16px;line-height:1.5}
 .auth-err{background:var(--red-d);border:1px solid var(--red-b);border-radius:var(--r-sm);padding:14px 16px;font-size:13px;color:var(--red);line-height:1.5;text-align:left;margin-top:16px}
 .auth-footer{text-align:center;margin-top:32px;font-size:12px;color:var(--t3);line-height:1.6}
+.auth-tabs{display:flex;gap:4px;margin-bottom:16px;background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:3px}
+.auth-tab{flex:1;padding:9px 6px;border:none;border-radius:8px;background:transparent;color:var(--t3);font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;transition:all .18s var(--ease)}
+.auth-tab.on{background:var(--s3);color:var(--t1)}
 
 /* ─── TOPBAR ─── */
 .topbar{padding:14px 18px 10px;background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:12px;position:relative;z-index:10}
@@ -451,7 +454,7 @@ async function sbFetchUser(){
   }catch(e){ return null; }
 }
 
-// ─── AUTH (Magic link via Supabase OTP) ───
+// ─── AUTH (Magic link + Email/password via Supabase) ───
 function showAuth(err){
   const authEl = $('auth-screen');
   if(authEl) authEl.classList.remove('hidden');
@@ -461,14 +464,104 @@ function showAuth(err){
   formEl.innerHTML = `
     <div class="auth-card">
       <h2 class="auth-title">Workout Tracker</h2>
-      <p class="auth-sub">Sign in with your email — we'll send you a magic link.</p>
-      <form id="magic-form" onsubmit="doMagicLink(event)">
+      <p class="auth-sub">Sign in to sync your data across devices.</p>
+      <div class="auth-tabs">
+        <button class="auth-tab on" data-tab="signin" type="button">Sign in</button>
+        <button class="auth-tab" data-tab="signup" type="button">Sign up</button>
+        <button class="auth-tab" data-tab="magic" type="button">Magic link</button>
+      </div>
+
+      <!-- Sign in -->
+      <form id="signin-form" class="auth-pane" onsubmit="doSignIn(event)">
+        <input type="email" id="signin-email" class="auth-input" placeholder="Email" required autocomplete="email" />
+        <input type="password" id="signin-password" class="auth-input" placeholder="Password (min 6)" required autocomplete="current-password" minlength="6" />
+        <button type="submit" class="auth-btn" id="signin-btn">Sign in</button>
+      </form>
+
+      <!-- Sign up -->
+      <form id="signup-form" class="auth-pane" style="display:none" onsubmit="doSignUp(event)">
+        <input type="email" id="signup-email" class="auth-input" placeholder="Email" required autocomplete="email" />
+        <input type="password" id="signup-password" class="auth-input" placeholder="Password (min 6)" required autocomplete="new-password" minlength="6" />
+        <button type="submit" class="auth-btn" id="signup-btn">Create account</button>
+      </form>
+
+      <!-- Magic link -->
+      <form id="magic-form" class="auth-pane" style="display:none" onsubmit="doMagicLink(event)">
         <input type="email" id="magic-email" class="auth-input" placeholder="you@example.com" required autocomplete="email" />
         <button type="submit" class="auth-btn" id="magic-btn">Send magic link</button>
       </form>
-      ${err?`<div class="auth-err">${err}</div>`:''}
+
       <div id="magic-msg" class="auth-info"></div>
+      ${err?`<div class="auth-err">${err}</div>`:''}
     </div>`;
+
+  // Tab switching
+  formEl.querySelectorAll('.auth-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      formEl.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('on'));
+      formEl.querySelectorAll('.auth-pane').forEach(p => p.style.display = 'none');
+      tab.classList.add('on');
+      const target = tab.dataset.tab;
+      const pane = $(target + '-form');
+      if(pane) pane.style.display = '';
+      const msg = $('magic-msg');
+      if(msg){ msg.textContent = ''; msg.className = 'auth-info'; }
+    });
+  });
+}
+
+async function doSignIn(e){
+  e.preventDefault();
+  const email = ($('signin-email').value||'').trim();
+  const password = $('signin-password').value||'';
+  if(!email || !password) return;
+  const btn = $('signin-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Signing in...'; }
+  const msg = $('magic-msg');
+  try{
+    const res = await sbReq('/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+    SB_SESSION = {...res, expires_at: Math.floor(Date.now()/1000) + (res.expires_in||3600)};
+    saveSession(SB_SESSION);
+    await bootApp();
+  }catch(err){
+    if(msg){ msg.textContent = friendlyAuthErr(err); msg.className = 'auth-err'; }
+  }finally{
+    const btn2 = $('signin-btn');
+    if(btn2){ btn2.disabled = false; btn2.textContent = 'Sign in'; }
+  }
+}
+
+async function doSignUp(e){
+  e.preventDefault();
+  const email = ($('signup-email').value||'').trim();
+  const password = $('signup-password').value||'';
+  if(!email || !password) return;
+  const btn = $('signup-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Creating...'; }
+  const msg = $('magic-msg');
+  try{
+    const res = await sbReq('/auth/v1/signup', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+    // If email confirmation required, res may not contain a session
+    if(res?.access_token){
+      SB_SESSION = {...res, expires_at: Math.floor(Date.now()/1000) + (res.expires_in||3600)};
+      saveSession(SB_SESSION);
+      await bootApp();
+    } else if(msg){
+      msg.textContent = 'Account created — check your email to confirm, then sign in.';
+      msg.className = 'auth-info';
+    }
+  }catch(err){
+    if(msg){ msg.textContent = friendlyAuthErr(err); msg.className = 'auth-err'; }
+  }finally{
+    const btn2 = $('signup-btn');
+    if(btn2){ btn2.disabled = false; btn2.textContent = 'Create account'; }
+  }
 }
 
 async function doMagicLink(e){
