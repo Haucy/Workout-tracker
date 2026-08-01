@@ -1034,6 +1034,27 @@ async function bootApp(){
 
 // ─── INIT ───
 async function init(){
+  // Handle magic link callback: parse tokens from URL hash
+  const hash = location.hash.replace(/^#/, '');
+  if(hash && hash.includes('access_token')){
+    const params = new URLSearchParams(hash);
+    const access_token = params.get('access_token');
+    const refresh_token = params.get('refresh_token');
+    const expires_in = parseInt(params.get('expires_in')||'3600', 10);
+    if(access_token && refresh_token){
+      SB_SESSION = {
+        access_token, refresh_token,
+        expires_at: Math.floor(Date.now()/1000) + expires_in
+      };
+      saveSession(SB_SESSION);
+      // Clean URL — remove tokens from address bar
+      history.replaceState(null, '', location.pathname + location.search);
+      await bootApp();
+      return;
+    }
+    // Hash present but no valid token — clean up and show auth
+    history.replaceState(null, '', location.pathname + location.search);
+  }
   loadSession();
   if(SB_SESSION){
     if(SB_SESSION.expires_at && Date.now()/1000 > SB_SESSION.expires_at - 60){
