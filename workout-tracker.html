@@ -1016,20 +1016,21 @@ async function bootApp(){
     if(!SB_SESSION?.access_token) { signOut(); return; }
     await sbFetchUser();
     await dbLoad();
-    $('screen-loading').style.display='none';
-    $('screen-'+S.tab).classList.add('active');
-    posTrack(S.tab,false);
-    const user=SB_SESSION?.user;
-    const name=(user?.user_metadata?.display_name||user?.user_metadata?.full_name||user?.email||'?');
-    $('tb-avatar').textContent=(name[0]||'?').toUpperCase();
-    $('um-name').textContent=user?.user_metadata?.display_name||user?.user_metadata?.full_name||name.split('@')[0];
-    $('um-email').textContent=user?.email||'';
-    gsap.from($('app-shell'),{opacity:0,duration:.35,ease:'power2.out'});
-    render();
   }catch(e){
-    $('screen-loading').style.display='none';
-    toast(fErr(e),true);
+    console.error('[bootApp] error:', e);
+    toast(fErr(e)||'Sync failed — using local cache', true);
   }
+  // Always render app, even if cloud sync fails — local cache is still usable
+  $('screen-loading').style.display='none';
+  $('screen-'+S.tab).classList.add('active');
+  posTrack(S.tab,false);
+  const user=SB_SESSION?.user;
+  const name=(user?.user_metadata?.display_name||user?.user_metadata?.full_name||user?.email||'?');
+  $('tb-avatar').textContent=(name[0]||'?').toUpperCase();
+  $('um-name').textContent=user?.user_metadata?.display_name||user?.user_metadata?.full_name||name.split('@')[0];
+  $('um-email').textContent=user?.email||'';
+  gsap.from($('app-shell'),{opacity:0,duration:.35,ease:'power2.out'});
+  render();
 }
 
 // ─── INIT ───
