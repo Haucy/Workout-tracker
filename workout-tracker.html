@@ -542,12 +542,13 @@ async function doSignUp(e){
   const btn = $('signup-btn');
   if(btn){ btn.disabled = true; btn.textContent = 'Creating...'; }
   const msg = $('magic-msg');
+  console.log('[SignUp] email:', email, 'project:', SB_URL);
   try{
     const res = await sbReq('/auth/v1/signup', {
       method: 'POST',
       body: JSON.stringify({ email, password })
     });
-    // If email confirmation required, res may not contain a session
+    console.log('[SignUp] response:', res);
     if(res?.access_token){
       SB_SESSION = {...res, expires_at: Math.floor(Date.now()/1000) + (res.expires_in||3600)};
       saveSession(SB_SESSION);
@@ -557,7 +558,12 @@ async function doSignUp(e){
       msg.className = 'auth-info';
     }
   }catch(err){
-    if(msg){ msg.textContent = friendlyAuthErr(err); msg.className = 'auth-err'; }
+    console.error('[SignUp] ERROR:', err);
+    if(msg){
+      const msgText = friendlyAuthErr(err);
+      msg.textContent = msgText || ('Error: ' + String(err.message||err));
+      msg.className = 'auth-err';
+    }
   }finally{
     const btn2 = $('signup-btn');
     if(btn2){ btn2.disabled = false; btn2.textContent = 'Create account'; }
